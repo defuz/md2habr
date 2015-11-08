@@ -153,7 +153,7 @@ class MarkdownParser(object):
             return self.parse_unordered_list()
         if line.startswith('[1]: '):
             return self.parse_references()
-        if line.startswith('<span'):
+        if line.startswith('<a name='):
             return self.parse_anchor()
         return self.parse_paragraph()
 
@@ -210,11 +210,7 @@ class HabrahabrFormatter(object):
         return text
 
     def format_header(self, header):
-        def create_id(text):
-            text = ''.join(c if c.isalnum() else ('-' if c == ' ' else '') for c in text)
-            return unicode(str(text).lower(), 'utf-8').replace('--', '-').strip('-')
-        return '<anchor>{id}</anchor><h{level}>{text}</h{level}>\n'.format(
-            id=create_id(header.text),
+        return '<h{level}>{text}</h{level}>\n'.format(
             level=header.level+1,
             text=self.format_text(header.text)
         )
