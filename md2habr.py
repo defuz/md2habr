@@ -1,10 +1,11 @@
+# -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 import sys, re, html
 
 class Reader(object):
-    def __init__(self, stream):
+    def __init__(self, content):
         self.index = 0
-        self.lines = [unicode(line, 'utf-8').rstrip() for line in stream.readlines()]
+        self.lines = [line.rstrip() for line in unicode(content, 'utf-8').split('\n')]
 
     def __iter__(self):
         return self
@@ -92,8 +93,6 @@ class MarkdownParser(object):
         for line in self.reader:
             if line == '```':
                 break
-            if line == '#' or line.startswith('# '):
-                continue
             block.append(line)
         return SourceBlock(lang, '\n'.join(block))
 
@@ -164,7 +163,7 @@ class MarkdownParser(object):
                 line = self.reader.peek()
             except StopIteration:
                 break
-            if not line or line.startswith('% '):
+            if not line:
                 self.reader.next()
                 continue
             block = self.parse_next(line)
@@ -179,6 +178,15 @@ class HabrahabrFormatter(object):
     def __init__(self, markdown):
         self.markdown = markdown
 
+    def url_mapper(self, url):
+        return url
+
+    def lang_mapper(self, lang):
+        return lang
+
+    def header_level_mapper(self, level):
+        return level
+
     def format_code(self, text):
         return "<code>%s</code>" % text
 
@@ -191,10 +199,7 @@ class HabrahabrFormatter(object):
     def format_link(self, text, ref):
         if ref.isdigit():
             ref = self.markdown.refs[int(ref)]
-        if not ref.startswith('http://') and \
-           not ref.startswith('https://') and \
-           not ref.startswith('#'):
-            ref = "http://kgv.github.io/rust_book_ru/src/" + ref
+        ref = self.url_mapper(ref)
         return "<a href='{ref}'>{text}</a>".format(ref=ref, text=text)
 
     def format_text(self, text):
@@ -210,8 +215,9 @@ class HabrahabrFormatter(object):
         return text
 
     def format_header(self, header):
+        level = self.header_level_mapper(header.level)
         return '<h{level}>{text}</h{level}>\n'.format(
-            level=header.level+1,
+            level=level,
             text=self.format_text(header.text)
         )
 
@@ -224,18 +230,22 @@ class HabrahabrFormatter(object):
         return '<anchor>%s</anchor>' % anchor.id
 
     def format_source(self, source):
-        if source.lang.startswith("rust"):
-            return '<source lang="rust">\n%s\n</source>\n' % html.escape(source.text)
+        lang = self.lang_mapper(source.lang)
+        if lang:
+            return '<source lang="{lang}">\n{text}\n</source>\n'.format(
+                lang=lang,
+                text=html.escape(source.text)
+            )
         return '<source>\n%s\n</source>\n' % html.escape(source.text)
 
     def format_ordered_list(self, lst):
         return '<ol>\n%s\n</ol>\n' % '\n'.join(
-            '<li>%s</li>' % self.format_text(item) for item in lst.items
+            '    <li>%s</li>' % self.format_text(item) for item in lst.items
         )
 
     def format_unordered_list(self, lst):
         return '<ul>\n%s\n</ul>\n' % '\n'.join(
-            '<li>%s</li>' % self.format_text(item) for item in lst.items
+            '    <li>%s</li>' % self.format_text(item) for item in lst.items
         )
 
     def format(self):
@@ -252,7 +262,42 @@ class HabrahabrFormatter(object):
             parts.append(FORMAT_TABLE[type(block)](block))
         return ''.join(parts)
 
+
+class RustbookHabrahabrFormatter(HabrahabrFormatter):
+    def url_mapper(self, url):
+        # заменяем относительные ссылки на абсолютные
+        if not url.startswith('http://') and \
+           not url.startswith('https://') and \
+           not url.startswith('#'):
+            return "http://kgv.github.io/rust_book_ru/src/" + url
+        return url
+
+    def lang_mapper(self, lang):
+        if lang.startswith("rust"):
+            return "rust"
+        return None
+
+    def header_level_mapper(self, level):
+        return level + 1
+
+    def format_paragraph(self, paragraph):
+        # удаляем заголок статьи из текста статьи
+        if paragraph.text.startswith('% '):
+            return ''
+        return HabrahabrFormatter.format_paragraph(self, paragraph)
+
+    def format_source(self, source):
+        # удаляем комментарии из примеров кода, начинающиеся с "#"
+        text = '\n'.join(
+            line for line in source.text.split('\n') if line != '#' and not line.startswith('# ')
+        )
+        source = SourceBlock(source.lang, text)
+        return HabrahabrFormatter.format_source(self, source)
+
+
 if __name__ == '__main__':
     reload(sys)
     sys.setdefaultencoding("utf-8")
-    print HabrahabrFormatter(MarkdownParser(Reader(open(sys.argv[1]))).parse()).format()
+    reader = Reader(open(sys.argv[1]).read())
+    markdown = MarkdownParser(reader).parse()
+    print RustbookHabrahabrFormatter(markdown).format()
