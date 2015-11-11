@@ -231,10 +231,11 @@ class HabrahabrFormatter(object):
 
     def format_source(self, source):
         lang = self.lang_mapper(source.lang)
+        text = html.escape(source.text.strip("\n\r"))
         if lang:
             return '<source lang="{lang}">\n{text}\n</source>\n'.format(
                 lang=lang,
-                text=html.escape(source.text)
+                text=text
             )
         return '<source>\n%s\n</source>\n' % html.escape(source.text)
 
